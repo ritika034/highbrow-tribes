@@ -23,15 +23,20 @@ public class Interest extends AbstractActor {
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(InterestsRequest.class,
-                        msg -> {
-                            HashSet<String> programmingLanguages = getUserLanguages(msg.getGithubUserId());
-                            Interests interests = new Interests(programmingLanguages);
-                            InterestsResponse interestsResponse = new InterestsResponse(msg.getRequestId()
-                                    ,interests);
-                            matcherActor.tell(interestsResponse,getSelf());
+            .match(HeartBeat.class,
+                msg -> {
+//                    System.out.println("Pulse received!");
+                    getSender().tell(new HeartBeat("Rest Module"), null);
+                })
+            .match(InterestsRequest.class,
+                msg -> {
+                    HashSet<String> programmingLanguages = getUserLanguages(msg.getGithubUserId());
+                    Interests interests = new Interests(programmingLanguages);
+                    InterestsResponse interestsResponse = new InterestsResponse(msg.getRequestId()
+                            ,interests);
+                    matcherActor.tell(interestsResponse,getSelf());
 
-                        }).build();
+                }).build();
     }
 
     private HashSet<String> getUserLanguages(String userId){
