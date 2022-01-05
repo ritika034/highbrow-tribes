@@ -19,6 +19,7 @@ public class Triber extends AbstractActor {
     HashMap<Long, UserInfo> requestsToUserInfoMap = new HashMap<>();
     HashMap<Long, Long> uniqueIdMap = new HashMap<>();
     ArrayList<Tribe> allTribes = new ArrayList<>();
+    ArrayList<UserInfo> allUserInfo = new ArrayList<>();
 
     public static void main(String[] args){
         System.out.println("1) Test here");
@@ -36,6 +37,7 @@ public class Triber extends AbstractActor {
         return receiveBuilder()
             .match(TriberInitializationResponse.class,
                 msg -> {
+                    allUserInfo = msg.getAllUsers();
                     allTribes = msg.getAllTribes();
                     userUniqueId = msg.getMaxUserId();
                     tribeUniqueId = msg.getMaxTribeId();
@@ -43,13 +45,20 @@ public class Triber extends AbstractActor {
             .match(UserRequest.class,
                 msg -> {
                     System.out.println("User creation request received for : " + msg.getNewUser().getName() + " with Unique ID: " + msg.getUniqueId());
-                    //Adding new User
-                    long currUserUniqueId = ++userUniqueId;
-                    uniqueIdMap.put(currUserUniqueId, msg.getUniqueId());
-                    requestsToUserInfoMap.put(currUserUniqueId, msg.getNewUser());
-                    //Interests request sent to Interests System
-                    interestsActor.tell(new InterestsRequest(currUserUniqueId,msg.getNewUser().getGitHubId()), getSelf());
-                })
+                    if(validateInputRequest(msg)) {
+                        //Adding new User
+                        long currUserUniqueId = ++userUniqueId;
+                        uniqueIdMap.put(currUserUniqueId, msg.getUniqueId());
+                        requestsToUserInfoMap.put(currUserUniqueId, msg.getNewUser());
+                        //Interests request sent to Interests System
+                        interestsActor.tell(new InterestsRequest(currUserUniqueId, msg.getNewUser().getGitHubId()), getSelf());
+                    }else
+                    {
+                        UserResponse userResponse = new UserResponse(msg.getUniqueId(),"Github ID already registered, Please use a different GitHub Id");
+                        ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+msg.getNewUser().getPortNumber()+"/user/"+msg.getUniqueId());
+                        clientActor.tell(userResponse, null);
+                    }
+                    })
             .match(InterestsResponse.class,
                 msg -> {
                     System.out.println("Received Interests response from Interests System for User :"+requestsToUserInfoMap.get(msg.getUniqueId()).getName()+" Unique ID:"+ msg.getUniqueId());
@@ -114,6 +123,14 @@ public class Triber extends AbstractActor {
                 }).build();
     }
 
+    private boolean validateInputRequest(UserRequest userRequest){
+        if(allUserInfo!= null && allUserInfo.size()>0 && allUserInfo.stream().filter(user->user.getGitHubId()
+                .equalsIgnoreCase(userRequest.getNewUser().getGitHubId()))
+                .collect(Collectors.toList()).size() > 0)
+            return false;
+        else
+            return true;
+    }
     private String getTribeName(Tribe tribe) {
         return allTribes.stream()
                 .filter(t->t.getTribeId() == tribe.getTribeId())

@@ -32,6 +32,15 @@ public class TribesApplication {
 
 		UserRepo userRepo = Constants.configurableApplicationContext.getBean(UserRepo.class);
 		ArrayList<User> users = (ArrayList<User>) userRepo.findAll();
+		ArrayList<UserInfo> allUsers = new ArrayList<>();
+		users.forEach(user->{
+			UserInfo mappedUserInfo = new UserInfo();
+			mappedUserInfo.setName(user.getName());
+			mappedUserInfo.setGitHubId(user.getGitHubId());
+			mappedUserInfo.setPortNumber(user.getPortNumber());
+			mappedUserInfo.setTribeId(user.getTribeId());
+			allUsers.add(mappedUserInfo);
+		});
 		if (users.size() > 0) {
 			ArrayList<Tribe> tribeArrayList = new ArrayList<>();
 			Map<Long, List<User>> tribeAndUserMap = users.stream().collect(groupingBy(User::getTribeId));
@@ -60,7 +69,7 @@ public class TribesApplication {
 			Long maxTribeId = users.stream().max(Comparator.comparing(User::getTribeId)).orElseThrow().getTribeId();
 			Long maxUniqueId = users.stream().max(Comparator.comparing(User::getUniqueId)).orElseThrow().getUniqueId();
 
-			return new TriberInitializationResponse(null,
+			return new TriberInitializationResponse(allUsers,
 					tribeArrayList, maxUniqueId, maxTribeId);
 		} else {
 			return new TriberInitializationResponse(null,

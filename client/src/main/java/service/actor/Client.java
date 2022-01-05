@@ -20,7 +20,7 @@ public class Client extends AbstractActor {
     private static UserRequest userRequest;
     private static Boolean IsInChat = false;
 
-    public static void main(String [] args){
+    public static void main(String [] args) throws IOException {
         system = ActorSystem.create();
         communicationSelection =
                 system.actorSelection("akka.tcp://default@127.0.0.1:2556/user/communicator");
@@ -32,9 +32,17 @@ public class Client extends AbstractActor {
         long uniqueId = rand.nextInt() + rand.nextInt();
         uniqueId = Math.abs(uniqueId);
         //userInfo.setUniqueId(uniqueId);
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in));
+//        System.out.println("Enter your Port number");
+//        String portNumber = reader.readLine();
         userInfo.setPortNumber(2555);
-        userInfo.setName("Ritika Mehta");
-        userInfo.setGitHubId("ritikamehta341994");
+        System.out.println("Enter your name");
+        String userName = reader.readLine();
+        userInfo.setName(userName);
+        System.out.println("Enter your GitHub Id");
+        String githubId = reader.readLine();
+        userInfo.setGitHubId(githubId);
         setReference(uniqueId);
 
         userRequest = new UserRequest(uniqueId,userInfo);
@@ -75,6 +83,14 @@ public class Client extends AbstractActor {
                 setReference(uniqueId);
                 ChatRegisterRequest chatRegisterRequest = new ChatRegisterRequest(uniqueId,userInfo);
                 communicationSelection.tell(chatRegisterRequest,getSelf());
+            })
+            .match(UserResponse.class,msg->{
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(System.in));
+                System.out.println("Enter your GitHub Id");
+                String githubId = reader.readLine();
+                userInfo.setGitHubId(githubId);
+                triberSelection.tell(userRequest, ref);
             })
             .match(TribeSuggestionRequest.class, msg->{
                 BufferedReader reader = new BufferedReader(
