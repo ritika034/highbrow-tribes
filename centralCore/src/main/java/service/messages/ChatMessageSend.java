@@ -23,7 +23,7 @@ public class ChatMessageSend implements MySerializable {
     @Setter
     private String message;
 
-    public ChatMessageSend(){};
+    public ChatMessageSend(){}
     public ChatMessageSend(String senderName, Timestamp sentTime, long uniqueId,long tribeId, String message) {
         this.senderName = senderName;
         this.sentTime = sentTime;
@@ -31,21 +31,5 @@ public class ChatMessageSend implements MySerializable {
         this.tribeId = tribeId;
         this.message = message;
         //Instant temp;
-    }
-
-    public long getUniqueId() {
-        return uniqueId;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public String getSenderName() {
-        return senderName;
-    }
-
-    public Timestamp getSentTime() {
-        return sentTime;
     }
 }
