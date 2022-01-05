@@ -118,9 +118,7 @@ public class Triber extends AbstractActor {
 
                             clientActor.tell(msg,null);
                         })
-                .match(Long.class,msg->{
-                    System.out.println(msg);
-                }).build();
+                .build();
     }
 
     private boolean validateInputRequest(UserRequest userRequest){
