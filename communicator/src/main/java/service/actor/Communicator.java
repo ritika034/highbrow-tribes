@@ -27,13 +27,7 @@ public class Communicator extends AbstractActor {
         return receiveBuilder()
             .match(HeartBeat.class,
                 msg -> {
-//                    System.out.println("Pulse received!");
                     getSender().tell(new HeartBeat("Communicator Module"), null);
-                })
-            .match(String.class,
-                msg -> {
-                    System.out.println("test initializaogoe" + msg.toLowerCase(Locale.ROOT));
-//                            MatcherActor.tell(new TribeDetailRequest(msg.getUniqueId()), null);
                 })
             .match(ChatRegisterRequest.class,
                 msg -> {
@@ -63,10 +57,6 @@ public class Communicator extends AbstractActor {
                             selection.tell(new ChatMessageReceive(msg.getSenderName(), msg.getSentTime(), msg.getUniqueId(), msg.getMessage()), null);
                         }
                     }
-                })
-            .match(ChatMessageReceive.class,
-                msg -> {
-//                            ActiveUsers.put(msg.getUniqueId(), msg.getTribe());
                 }).build();
     }
 }

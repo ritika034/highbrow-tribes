@@ -79,7 +79,7 @@ public class Triber extends AbstractActor {
                     userUniqueId = msg.getMaxUserId();
                     tribeUniqueId = msg.getMaxTribeId();
                     getContext().system().scheduler().scheduleOnce(
-                        Duration.create(5, TimeUnit.SECONDS),
+                        Duration.create(10, TimeUnit.SECONDS),
                         getSelf(),
                         "Send Pulse",
                         getContext().dispatcher(), null);
@@ -118,7 +118,7 @@ public class Triber extends AbstractActor {
                         }
                     }
                     getContext().system().scheduler().scheduleOnce(
-                            Duration.create(5, TimeUnit.SECONDS),
+                            Duration.create(10, TimeUnit.SECONDS),
                             getSelf(),
                             "Send Pulse",
                             getContext().dispatcher(), null);
@@ -146,9 +146,14 @@ public class Triber extends AbstractActor {
                     }
                     else
                     {
-                        UserResponse userResponse = new UserResponse(msg.getUniqueId(),"Github ID already registered or Invalid user data, please try a different ");
+                        UserInfo ui = getUserByGitHubId(msg.getNewUser().getGitHubId());
+                        UserCreationResponse userCreationResponse = new UserCreationResponse();
+
+                        userCreationResponse.setTribeId(ui.getTribeId());
+                        userCreationResponse.setUniqueId(msg.getUniqueId());
+
                         ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+msg.getNewUser().getPortNumber()+"/user/"+msg.getUniqueId());
-                        clientActor.tell(userResponse, null);
+                        clientActor.tell(userCreationResponse, null);
                     }
                     })
             .match(InterestsResponse.class,
@@ -194,23 +199,23 @@ public class Triber extends AbstractActor {
                     Tribe tribe = getTribeById(msg.getTribeId());
                     getSender().tell(new TribeDetailResponse(msg.getUniqueId(), tribe), null);
                 })
-                .match(TribeSuggestionResponse.class,
-                        msg->{
-                            requestsToUserInfoMap.get(msg.getUniqueId()).setTribeId(msg.getTribeId());
-                            UserCreationRequest userCreationRequest = new UserCreationRequest(msg.getUniqueId(),requestsToUserInfoMap.get(msg.getUniqueId()),getTribeName(getTribeById(msg.getTribeId())));
-                            persistanceActor.tell(userCreationRequest,getSelf());
-                        })
-                .match(UserCreationResponse.class,
-                        msg->{
-                            System.out.println("You are successfully registered in the System");
-                            long clientID = uniqueIdMap.get(msg.getUniqueId());
-                            UserInfo userInfo = requestsToUserInfoMap.get(msg.getUniqueId());
-                            ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+userInfo.getPortNumber()+"/user/"+clientID);
-                            persistanceActor.tell("InitializeTriberSystem", getSelf());
+            .match(TribeSuggestionResponse.class,
+                msg->{
+                    requestsToUserInfoMap.get(msg.getUniqueId()).setTribeId(msg.getTribeId());
+                    UserCreationRequest userCreationRequest = new UserCreationRequest(msg.getUniqueId(),requestsToUserInfoMap.get(msg.getUniqueId()),getTribeName(getTribeById(msg.getTribeId())));
+                    persistanceActor.tell(userCreationRequest,getSelf());
+                })
+        .match(UserCreationResponse.class,
+            msg->{
+                System.out.println("You are successfully registered in the System");
+                long clientID = uniqueIdMap.get(msg.getUniqueId());
+                UserInfo userInfo = requestsToUserInfoMap.get(msg.getUniqueId());
+                ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+userInfo.getPortNumber()+"/user/"+clientID);
+                persistanceActor.tell("InitializeTriberSystem", getSelf());
 
-                            clientActor.tell(msg,null);
-                        })
-                .build();
+                clientActor.tell(msg,null);
+            })
+            .build();
     }
 
     private int validateInputRequest(UserRequest userRequest){
@@ -235,6 +240,11 @@ public class Triber extends AbstractActor {
         return allTribes.stream()
                 .filter(t->t.getTribeId() == tribe.getTribeId())
                 .collect(Collectors.toList()).get(0).getTribeName();
+    }
+    private UserInfo getUserByGitHubId(String userGithubId) {
+        return allUserInfo.stream()
+                .filter(t->t.getGitHubId().equalsIgnoreCase(userGithubId))
+                .collect(Collectors.toList()).get(0);
     }
 
     private Set<Tribe> getTribeSuggestions(Interests interests, UserInfo userInfo){
