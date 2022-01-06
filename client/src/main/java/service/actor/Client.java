@@ -105,7 +105,7 @@ public class Client extends AbstractActor {
                         sb.append(UI.getName()).append(", ");
                     }
 
-                    tribe.toString();
+                    System.out.println(tribe);
                     //System.out.println("Tribe ID: " + tribe.getTribeId() + ", Programming Language: " + tribe.getTribeLanguages() + ", Tribe Name: " + tribe.getTribeName() + "_Tribe, Members: " + sb);
                 }
                 System.out.println("Enter the ID of the tribe you would like to join");

@@ -13,7 +13,6 @@ import java.util.stream.Stream;
 
 public class Triber extends AbstractActor {
     private static ActorSystem system;
-    //private static TriberSystem triberSystem;
     private static long userUniqueId = 1;
     private static long tribeUniqueId = 1;
     private static ActorSelection interestsActor, persistanceActor, communicationActor;
@@ -33,14 +32,12 @@ public class Triber extends AbstractActor {
     ArrayList<UserInfo> allUserInfo = new ArrayList<>();
 
     public static void main(String[] args){
-        System.out.println("1) Test here");
         system = ActorSystem.create();
         ActorRef ref = system.actorOf(Props.create(Triber.class), "triber");
         interestsActor = system.actorSelection("akka.tcp://default@127.0.0.1:2554/user/interests");
         persistanceActor = system.actorSelection("akka.tcp://default@127.0.0.1:2552/user/userSystem");
         communicationActor = system.actorSelection("akka.tcp://default@127.0.0.1:2556/user/communicator");
 
-        System.out.println("2) Test here");
         persistanceActor.tell("InitializeTriberSystem", ref);
     }
 
@@ -82,7 +79,7 @@ public class Triber extends AbstractActor {
                     userUniqueId = msg.getMaxUserId();
                     tribeUniqueId = msg.getMaxTribeId();
                     getContext().system().scheduler().scheduleOnce(
-                        Duration.create(5, TimeUnit.SECONDS),
+                        Duration.create(10, TimeUnit.SECONDS),
                         getSelf(),
                         "Send Pulse",
                         getContext().dispatcher(), null);
@@ -90,7 +87,7 @@ public class Triber extends AbstractActor {
             .match(String.class,
                 msg->{
 //                    System.out.println("Repeat message received");
-                    if(msg == "Send Pulse") {
+                    if(msg.equals("Send Pulse")) {
                         if (isRestModuleUp) {
 //                            System.out.println("Pulse sent for rest service");
                             isRestModuleUp = false;
@@ -121,7 +118,7 @@ public class Triber extends AbstractActor {
                         }
                     }
                     getContext().system().scheduler().scheduleOnce(
-                            Duration.create(5, TimeUnit.SECONDS),
+                            Duration.create(10, TimeUnit.SECONDS),
                             getSelf(),
                             "Send Pulse",
                             getContext().dispatcher(), null);
@@ -129,18 +126,34 @@ public class Triber extends AbstractActor {
             .match(UserRequest.class,
                 msg -> {
                     System.out.println("User creation request received for : " + msg.getNewUser().getName() + " with Unique ID: " + msg.getUniqueId());
-                    if(validateInputRequest(msg)) {
+                    int validationStatus = validateInputRequest(msg);
+                    // 0 -> new user
+                    // 1 -> incorrect details
+                    // 2 -> relogging
+
+                    if(validationStatus == 0) {
                         //Adding new User
                         long currUserUniqueId = ++userUniqueId;
                         uniqueIdMap.put(currUserUniqueId, msg.getUniqueId());
                         requestsToUserInfoMap.put(currUserUniqueId, msg.getNewUser());
                         //Interests request sent to Interests System
                         interestsActor.tell(new InterestsRequest(currUserUniqueId, msg.getNewUser().getGitHubId()), getSelf());
-                    }else
-                    {
-                        UserResponse userResponse = new UserResponse(msg.getUniqueId(),"Github ID already registered, Please use a different GitHub Id");
+                    }
+                    else if(validationStatus == 1){
+                        UserResponse userResponse = new UserResponse(msg.getUniqueId(),"Invalid user data, please try a different user detail");
                         ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+msg.getNewUser().getPortNumber()+"/user/"+msg.getUniqueId());
                         clientActor.tell(userResponse, null);
+                    }
+                    else
+                    {
+                        UserInfo ui = getUserByGitHubId(msg.getNewUser().getGitHubId());
+                        UserCreationResponse userCreationResponse = new UserCreationResponse();
+
+                        userCreationResponse.setTribeId(ui.getTribeId());
+                        userCreationResponse.setUniqueId(msg.getUniqueId());
+
+                        ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+msg.getNewUser().getPortNumber()+"/user/"+msg.getUniqueId());
+                        clientActor.tell(userCreationResponse, null);
                     }
                     })
             .match(InterestsResponse.class,
@@ -150,11 +163,11 @@ public class Triber extends AbstractActor {
 
                     TribeSuggestionRequest tribeSuggestionRequest = new TribeSuggestionRequest();
                     //Fetch tribe suggestion for the user based on his interest
-                    Set<Tribe> suggestedTribe = getTribeSuggestions(msg.getInterest());
+                    Set<Tribe> suggestedTribe = getTribeSuggestions(msg.getInterest(), requestsToUserInfoMap.get(msg.getUniqueId()));
 
                     if(suggestedTribe.size() == 0){
                         System.out.println("New Tribe Creation as no tribe for the user interests exists");
-                        String tribeLanguage = "";
+                        String tribeLanguage;
                         tribeLanguage = msg.getInterest().getProgrammingLanguages().stream().findFirst().get();
                         long tribeID = ++tribeUniqueId;
                         requestsToUserInfoMap.get(msg.getUniqueId()).setTribeId(tribeID);
@@ -186,53 +199,75 @@ public class Triber extends AbstractActor {
                     Tribe tribe = getTribeById(msg.getTribeId());
                     getSender().tell(new TribeDetailResponse(msg.getUniqueId(), tribe), null);
                 })
-                .match(TribeSuggestionResponse.class,
-                        msg->{
-                            requestsToUserInfoMap.get(msg.getUniqueId()).setTribeId(msg.getTribeId());
-                            UserCreationRequest userCreationRequest = new UserCreationRequest(msg.getUniqueId(),requestsToUserInfoMap.get(msg.getUniqueId()),getTribeName(getTribeById(msg.getTribeId())));
-                            persistanceActor.tell(userCreationRequest,getSelf());
-                        })
-                .match(UserCreationResponse.class,
-                        msg->{
-                            System.out.println("You are successfully registered in the System");
-                            long clientID = uniqueIdMap.get(msg.getUniqueId());
-                            UserInfo userInfo = requestsToUserInfoMap.get(msg.getUniqueId());
-                            ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+userInfo.getPortNumber()+"/user/"+clientID);
-                            persistanceActor.tell("InitializeTriberSystem", getSelf());
+            .match(TribeSuggestionResponse.class,
+                msg->{
+                    requestsToUserInfoMap.get(msg.getUniqueId()).setTribeId(msg.getTribeId());
+                    UserCreationRequest userCreationRequest = new UserCreationRequest(msg.getUniqueId(),requestsToUserInfoMap.get(msg.getUniqueId()),getTribeName(getTribeById(msg.getTribeId())));
+                    persistanceActor.tell(userCreationRequest,getSelf());
+                })
+        .match(UserCreationResponse.class,
+            msg->{
+                System.out.println("You are successfully registered in the System");
+                long clientID = uniqueIdMap.get(msg.getUniqueId());
+                UserInfo userInfo = requestsToUserInfoMap.get(msg.getUniqueId());
+                ActorSelection clientActor = system.actorSelection("akka.tcp://default@127.0.0.1:"+userInfo.getPortNumber()+"/user/"+clientID);
+                persistanceActor.tell("InitializeTriberSystem", getSelf());
 
-                            clientActor.tell(msg,null);
-                        })
-                .build();
+                clientActor.tell(msg,null);
+            })
+            .build();
     }
 
-    private boolean validateInputRequest(UserRequest userRequest){
+    private int validateInputRequest(UserRequest userRequest){
         if(allUserInfo!= null && allUserInfo.size()>0 && allUserInfo.stream().filter(user->user.getGitHubId()
-                .equalsIgnoreCase(userRequest.getNewUser().getGitHubId()))
-                .collect(Collectors.toList()).size() > 0)
-            return false;
-        else
-            return true;
+                .equalsIgnoreCase(userRequest.getNewUser().getGitHubId()) && user.getName().equalsIgnoreCase(userRequest.getNewUser().getName()))
+                .collect(Collectors.toList()).size() > 0){
+            //User is logging in again
+            return 2;
+        }
+        else if(allUserInfo!= null && allUserInfo.size()>0 && allUserInfo.stream().filter(user->user.getGitHubId()
+                .equalsIgnoreCase(userRequest.getNewUser().getGitHubId()) && !user.getName().equalsIgnoreCase(userRequest.getNewUser().getName()))
+                .collect(Collectors.toList()).size() > 0){
+            //User has incorrect details
+            return 1;
+        }
+        else{
+            //New user
+            return 0;
+        }
     }
     private String getTribeName(Tribe tribe) {
         return allTribes.stream()
                 .filter(t->t.getTribeId() == tribe.getTribeId())
                 .collect(Collectors.toList()).get(0).getTribeName();
     }
+    private UserInfo getUserByGitHubId(String userGithubId) {
+        return allUserInfo.stream()
+                .filter(t->t.getGitHubId().equalsIgnoreCase(userGithubId))
+                .collect(Collectors.toList()).get(0);
+    }
 
-    private Set<Tribe> getTribeSuggestions(Interests interests){
+    private Set<Tribe> getTribeSuggestions(Interests interests, UserInfo userInfo){
         Set<Tribe> filteredTribes = new HashSet<>();
+        Set<String> remainingLanguages = interests.getProgrammingLanguages();
 
         for(Tribe existingTribe:allTribes){
-
             Set<String> temp
                     = Stream.of(existingTribe.getTribeLanguages().trim().split("\\s*,\\s*"))
                     .collect(Collectors.toSet());
             if(containsMatch(interests.getProgrammingLanguages(),temp)){
                 filteredTribes.add(existingTribe);
             }
-
+            remainingLanguages.remove(existingTribe.getTribeName());
         }
 
+        if(remainingLanguages.stream().count() > 0){
+            for(String language:remainingLanguages){
+                Tribe tempTribe = new Tribe(++tribeUniqueId, language, interests.getProgrammingLanguages().stream().collect(Collectors.joining(",")), Arrays.asList(userInfo));
+                filteredTribes.add(tempTribe);
+                allTribes.add(tempTribe);
+            }
+        }
         return filteredTribes;
     }
 
@@ -241,16 +276,12 @@ public class Triber extends AbstractActor {
     }
 
     private boolean containsMatch(Set<String> a, Set<String> b){
-
         Set<String> intersectSet = a.stream()
                 .filter(b::contains)
                 .collect(Collectors.toSet());
         if(intersectSet.size()>0){
             return true;
         }
-        else {
-            return false;
-        }
-
+        else return false;
     }
 }
